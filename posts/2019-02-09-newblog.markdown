@@ -1,10 +1,10 @@
 ---
-title: Github pagesに移行
+title: GitHub pagesに移行
 tags: Hakyll, memo, メモ
-description: 今までやっていなかったのでGithub pagesを作ってみた。このサイトはHakyllを使って生成している。
+description: 今までやっていなかったのでGitHub pagesを作ってみた。このサイトはHakyllを使って生成している。
 ---
 
-今までやっていなかったのでGithub pagesを作ってみた。
+今までやっていなかったのでGitHub pagesを作ってみた。
 このサイトはHakyllを使って生成している。
 
 # 導入
@@ -20,7 +20,7 @@ stack exec site build
 
 # デプロイ
 Hakyllを使うと生成されたサイトは`_site`以下にできる。
-Github pagesでは`master`ブランチのルートディレクトリがWebRootとなるようなので、
+GitHub pagesでは`master`ブランチのルートディレクトリがWebRootとなるようなので、
 Hakyllのコードは`develop`ブランチに置き、生成したサイトのみを`master`に置く。
 これも[チュートリアル](https://jaspervdj.be/hakyll/tutorials/github-pages-tutorial.html)にあるスクリプトを少し書き換えた。
 ```bash:deploy.sh
