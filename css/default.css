@@ -1,11 +1,19 @@
 html {
   font-size: 62.5%;
   font-family: sans-serif;
+  height: 100%;
 }
 
 body {
   font-size: 1.6rem;
-  color: #000;
+  background-color: #516C9D;
+  height: 100%;
+}
+
+.content {
+  background-color: #DEDEDE;
+  min-height: 100%;
+  padding: 0rem 1rem;
 }
 
 header {
@@ -46,6 +54,14 @@ article .header {
   color: #555;
 }
 
+.card {
+    background-color: rgb(230,230,230);
+    margin: 1rem 0rem;
+    padding: 0rem 1rem;
+    border-radius: 1rem;
+    border: 2px solid #28385E;
+}
+
 .logo a {
   font-weight: bold;
   color: #000;
@@ -56,20 +72,20 @@ article .header {
     width: 100px;
     height: 100px;
 }
-
-pre {
-    background-color: rgb(230,230,230);
+div .sourceCode {
+    background-color: rgb(200,200,200);
+    border-radius: 0.5rem;
     display: inline-block;
-    min-width: 100%;
+    padding: 0rem 0.1rem;
+    width: 100%;
 }
 
 code {
-    background-color: rgb(230,230,230);
-    padding: 0px 4px;
+    background-color: rgb(200,200,200);
+    padding: 0.1rem 0.2rem;
 }
-pre code{
-    padding: 0px 0px;
-}
+
+
 
 
 @media (max-width: 319px) {

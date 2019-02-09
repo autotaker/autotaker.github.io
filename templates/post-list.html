@@ -1,7 +1,13 @@
-<ul>
+<div>
     $for(posts)$
-        <li>
-            <a href="$url$">$title$</a> - $date$
-        </li>
+        <div class="card">
+        <article>
+            <h3><a href="$url$">$title$</a></h3>
+            <section class="header">- $date$</section>
+            $if(description)$
+            <p>$description$</p>
+            $endif$
+        </article>
+        </div>
     $endfor$
-</ul>
+</div>
