@@ -1,8 +1,13 @@
 <article>
     <section class="header">
-        Posted on $date$
+        Posted on $date$<br>
         $if(author)$
             by $author$
+        $endif$
+    </section>
+    <section class="header">
+        $if(tags)$
+        Tags: $tags$
         $endif$
     </section>
     <section>

@@ -1,5 +1,6 @@
 ---
 title: Github pagesに移行
+tags: Hakyll, memo, メモ
 ---
 
 今までやっていなかったのでGithub pagesを作ってみた。
