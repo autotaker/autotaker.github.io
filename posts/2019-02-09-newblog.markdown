@@ -1,0 +1,6 @@
+---
+title: Github pagesに移行
+---
+
+今までやっていなかったのでGithub pagesを作ってみた。
+このサイトはHakyllを使って生成している。
