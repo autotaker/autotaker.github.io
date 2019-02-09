@@ -6,6 +6,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>My Hakyll Blog - Github pagesに移行</title>
         <link rel="stylesheet" href="../css/default.css" />
+        <script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
     </head>
     <body>
         <header>
@@ -28,6 +29,88 @@
     </section>
     <section>
         <p>今までやっていなかったのでGithub pagesを作ってみた。 このサイトはHakyllを使って生成している。</p>
+<h1 id="導入">導入</h1>
+<p><a href="https://jaspervdj.be/hakyll/tutorials/01-installation.html">Hakyllのチュートリアル</a>に従ってインストール。</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><a class="sourceLine" id="cb1-1" title="1"><span class="ex">stack</span> install hakyll</a>
+<a class="sourceLine" id="cb1-2" title="2"><span class="ex">hakyll-init</span> autotaker.github.io</a>
+<a class="sourceLine" id="cb1-3" title="3"><span class="bu">cd</span> autotaker.github.io</a>
+<a class="sourceLine" id="cb1-4" title="4"><span class="ex">stack</span> init</a>
+<a class="sourceLine" id="cb1-5" title="5"><span class="ex">stack</span> build</a>
+<a class="sourceLine" id="cb1-6" title="6"><span class="ex">stack</span> exec site build</a></code></pre></div>
+<h1 id="デプロイ">デプロイ</h1>
+<p>Hakyllを使うと生成されたサイトは<code>_site</code>以下にできる。 Github pagesでは<code>master</code>ブランチのルートディレクトリがWebRootとなるようなので、 Hakyllのコードは<code>develop</code>ブランチに置き、生成したサイトのみを<code>master</code>に置く。 これも<a href="https://jaspervdj.be/hakyll/tutorials/github-pages-tutorial.html">チュートリアル</a>にあるスクリプトを少し書き換えた。</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash:deploy.sh"><code class="sourceCode bash"><a class="sourceLine" id="cb2-1" title="1"><span class="kw">set</span> <span class="ex">-xe</span></a>
+<a class="sourceLine" id="cb2-2" title="2"><span class="co"># Compile site generator</span></a>
+<a class="sourceLine" id="cb2-3" title="3"><span class="ex">stack</span> build</a>
+<a class="sourceLine" id="cb2-4" title="4"><span class="co"># Build my site</span></a>
+<a class="sourceLine" id="cb2-5" title="5"><span class="ex">stack</span> exec site build</a>
+<a class="sourceLine" id="cb2-6" title="6"></a>
+<a class="sourceLine" id="cb2-7" title="7"><span class="co"># Checkout the deploy branch</span></a>
+<a class="sourceLine" id="cb2-8" title="8"><span class="fu">git</span> checkout deploy</a>
+<a class="sourceLine" id="cb2-9" title="9"></a>
+<a class="sourceLine" id="cb2-10" title="10"><span class="co"># Copy all files in _site to the root</span></a>
+<a class="sourceLine" id="cb2-11" title="11"><span class="fu">rsync</span> -a --filter=<span class="st">'P _site/'</span>      \</a>
+<a class="sourceLine" id="cb2-12" title="12">         --filter=<span class="st">'P _cache/'</span>     \</a>
+<a class="sourceLine" id="cb2-13" title="13">         --filter=<span class="st">'P .git/'</span>       \</a>
+<a class="sourceLine" id="cb2-14" title="14">         --filter=<span class="st">'P .gitignore'</span>  \</a>
+<a class="sourceLine" id="cb2-15" title="15">         --filter=<span class="st">'P .stack-work'</span> \</a>
+<a class="sourceLine" id="cb2-16" title="16">         --delete-excluded        \</a>
+<a class="sourceLine" id="cb2-17" title="17">         _site/ .</a>
+<a class="sourceLine" id="cb2-18" title="18"></a>
+<a class="sourceLine" id="cb2-19" title="19"><span class="co"># Commit all generated files</span></a>
+<a class="sourceLine" id="cb2-20" title="20"><span class="fu">git</span> add -A</a>
+<a class="sourceLine" id="cb2-21" title="21"><span class="fu">git</span> commit -m <span class="st">'Deploy commit'</span> <span class="kw">||</span> <span class="fu">true</span></a>
+<a class="sourceLine" id="cb2-22" title="22"></a>
+<a class="sourceLine" id="cb2-23" title="23"><span class="co"># Push</span></a>
+<a class="sourceLine" id="cb2-24" title="24"><span class="fu">git</span> push origin deploy:master</a>
+<a class="sourceLine" id="cb2-25" title="25"></a>
+<a class="sourceLine" id="cb2-26" title="26"><span class="co"># Go back to the master branch</span></a>
+<a class="sourceLine" id="cb2-27" title="27"><span class="fu">git</span> checkout develop</a></code></pre></div>
+<p>このスクリプトを実行するとサイトが更新される。</p>
+<h1 id="数式">数式</h1>
+<p>数式を表示したいのでHakyllで使うPandocに適切なオプションを渡す。</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb3-1" title="1"><span class="kw">import</span>           <span class="dt">Text.Pandoc.Options</span>(<span class="dt">ReaderOptions</span>(..), <span class="dt">WriterOptions</span>(..), <span class="dt">HTMLMathMethod</span>(..))</a>
+<a class="sourceLine" id="cb3-2" title="2"></a>
+<a class="sourceLine" id="cb3-3" title="3">myPandocCompiler <span class="fu">=</span> pandocCompilerWith readerOptions writerOptions </a>
+<a class="sourceLine" id="cb3-4" title="4">    <span class="kw">where</span></a>
+<a class="sourceLine" id="cb3-5" title="5">    readerOptions <span class="fu">=</span> defaultHakyllReaderOptions</a>
+<a class="sourceLine" id="cb3-6" title="6">    writerOptions <span class="fu">=</span> defaultHakyllWriterOptions {</a>
+<a class="sourceLine" id="cb3-7" title="7">        writerHTMLMathMethod <span class="fu">=</span> <span class="dt">MathJax</span> <span class="st">&quot;&quot;</span></a>
+<a class="sourceLine" id="cb3-8" title="8">    }</a></code></pre></div>
+<p>そしてHTMLテンプレートの方でMathJaxを読み込む</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode html"><code class="sourceCode html"><a class="sourceLine" id="cb4-1" title="1"><span class="kw">&lt;head&gt;</span></a>
+<a class="sourceLine" id="cb4-2" title="2">  ...</a>
+<a class="sourceLine" id="cb4-3" title="3">  <span class="kw">&lt;script</span><span class="ot"> async src=</span><span class="st">&quot;https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML&quot;</span><span class="kw">&gt;&lt;/script&gt;</span></a>
+<a class="sourceLine" id="cb4-4" title="4"><span class="kw">&lt;/head&gt;</span></a></code></pre></div>
+<p>これで数式が表示できるようになった。</p>
+<h2 id="例">例</h2>
+<p><span class="math inline">\(e = m c^2\)</span> <span class="math display">\[
+    \mathrm{fib}(n) = 
+        \begin{cases} 
+            \mathrm{fizzbuzz} &amp; \text{if $n \mod 15 \equiv 0$}\\
+            \mathrm{fizz} &amp; \text{if $n \mod 3 \equiv 0 $}\\
+            \mathrm{buzz} &amp; \text{if $n \mod 5 \equiv 0 $}\\
+            n &amp; \text{otherwise}
+         \end{cases}
+\]</span></p>
+<h1 id="コード">コード</h1>
+<p>コードはデフォルトでシンタックスハイライトされているが、cssを設定しないと色がつかない。</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb5-1" title="1">stack exec ghci</a>
+<a class="sourceLine" id="cb5-2" title="2">ghci<span class="fu">&gt;</span> <span class="kw">import</span> <span class="dt">Text.Pandoc.Highlighting</span></a>
+<a class="sourceLine" id="cb5-3" title="3">ghci<span class="fu">&gt;</span> <span class="fu">putStr</span> <span class="fu">$</span> styleToCss <span class="fu">&lt;</span>style<span class="fu">&gt;</span> </a></code></pre></div>
+<p>とやると<code>&lt;style&gt;</code>に対応したcssが手に入るので好きなのを<code>default.css</code>にコピーして使う。 <code>&lt;style&gt;</code>はHaskellを書くことが多そうなので<code>haddoc</code>を使う.</p>
+<p>さらに<code>pre</code>タグがそれっぽくなるようcssで調整した。CSSわからない。</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode css"><code class="sourceCode css"><a class="sourceLine" id="cb6-1" title="1">pre {</a>
+<a class="sourceLine" id="cb6-2" title="2">    <span class="kw">background-color</span>: <span class="fu">rgb(</span><span class="dv">230</span><span class="op">,</span><span class="dv">230</span><span class="op">,</span><span class="dv">230</span><span class="fu">)</span><span class="op">;</span></a>
+<a class="sourceLine" id="cb6-3" title="3">    <span class="kw">display</span>: <span class="dv">inline-block</span><span class="op">;</span></a>
+<a class="sourceLine" id="cb6-4" title="4">    <span class="kw">min-width</span>: <span class="dv">100</span><span class="dt">%</span><span class="op">;</span></a>
+<a class="sourceLine" id="cb6-5" title="5">}</a></code></pre></div>
+<h2 id="例-1">例</h2>
+<div class="sourceCode" id="cb7"><pre class="sourceCode c"><code class="sourceCode c"><a class="sourceLine" id="cb7-1" title="1"><span class="pp">#include</span><span class="im">&lt;stdio.h&gt;</span></a>
+<a class="sourceLine" id="cb7-2" title="2"><span class="dt">int</span> main(<span class="dt">int</span> argc, <span class="dt">int</span> argv) {</a>
+<a class="sourceLine" id="cb7-3" title="3">    printf(<span class="st">&quot;Hello world!</span><span class="sc">\n</span><span class="st">&quot;</span>);</a>
+<a class="sourceLine" id="cb7-4" title="4">    <span class="cf">return</span> <span class="dv">0</span>;</a>
+<a class="sourceLine" id="cb7-5" title="5">}</a></code></pre></div>
     </section>
 </article>
 
