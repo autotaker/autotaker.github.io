@@ -2,9 +2,20 @@
 {-# LANGUAGE OverloadedStrings #-}
 import           Data.Monoid (mappend)
 import           Hakyll
+import           Text.Pandoc.Options(ReaderOptions(..), WriterOptions(..), HTMLMathMethod(..))
+import           Text.Pandoc.Extensions(githubMarkdownExtensions)
 
 
 --------------------------------------------------------------------------------
+
+myPandocCompiler = pandocCompilerWith readerOptions writerOptions 
+    where
+    readerOptions = defaultHakyllReaderOptions
+    writerOptions = defaultHakyllWriterOptions {
+        writerHTMLMathMethod = MathJax ""
+    }
+
+
 main :: IO ()
 main = hakyll $ do
     match "images/*" $ do
@@ -17,13 +28,13 @@ main = hakyll $ do
 
     match (fromList ["about.rst", "contact.markdown"]) $ do
         route   $ setExtension "html"
-        compile $ pandocCompiler
+        compile $ myPandocCompiler
             >>= loadAndApplyTemplate "templates/default.html" defaultContext
             >>= relativizeUrls
 
     match "posts/*" $ do
         route $ setExtension "html"
-        compile $ pandocCompiler
+        compile $ myPandocCompiler
             >>= loadAndApplyTemplate "templates/post.html"    postCtx
             >>= loadAndApplyTemplate "templates/default.html" postCtx
             >>= relativizeUrls

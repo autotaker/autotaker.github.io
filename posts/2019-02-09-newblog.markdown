@@ -4,3 +4,114 @@ title: Github pagesに移行
 
 今までやっていなかったのでGithub pagesを作ってみた。
 このサイトはHakyllを使って生成している。
+
+# 導入
+[Hakyllのチュートリアル](https://jaspervdj.be/hakyll/tutorials/01-installation.html)に従ってインストール。
+```bash
+stack install hakyll
+hakyll-init autotaker.github.io
+cd autotaker.github.io
+stack init
+stack build
+stack exec site build
+```
+
+# デプロイ
+Hakyllを使うと生成されたサイトは`_site`以下にできる。
+Github pagesでは`master`ブランチのルートディレクトリがWebRootとなるようなので、
+Hakyllのコードは`develop`ブランチに置き、生成したサイトのみを`master`に置く。
+これも[チュートリアル](https://jaspervdj.be/hakyll/tutorials/github-pages-tutorial.html)にあるスクリプトを少し書き換えた。
+```bash:deploy.sh
+set -xe
+# Compile site generator
+stack build
+# Build my site
+stack exec site build
+
+# Checkout the deploy branch
+git checkout deploy
+
+# Copy all files in _site to the root
+rsync -a --filter='P _site/'      \
+         --filter='P _cache/'     \
+         --filter='P .git/'       \
+         --filter='P .gitignore'  \
+         --filter='P .stack-work' \
+         --delete-excluded        \
+         _site/ .
+
+# Commit all generated files
+git add -A
+git commit -m 'Deploy commit' || true
+
+# Push
+git push origin deploy:master
+
+# Go back to the master branch
+git checkout develop
+```
+
+このスクリプトを実行するとサイトが更新される。
+
+# 数式
+数式を表示したいのでHakyllで使うPandocに適切なオプションを渡す。
+```haskell
+import           Text.Pandoc.Options(ReaderOptions(..), WriterOptions(..), HTMLMathMethod(..))
+
+myPandocCompiler = pandocCompilerWith readerOptions writerOptions 
+    where
+    readerOptions = defaultHakyllReaderOptions
+    writerOptions = defaultHakyllWriterOptions {
+        writerHTMLMathMethod = MathJax ""
+    }
+```
+そしてHTMLテンプレートの方でMathJaxを読み込む
+```html
+<head>
+  ...
+  <script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+</head>
+```
+これで数式が表示できるようになった。 
+
+## 例
+$e = m c^2$
+$$
+    \mathrm{fib}(n) = 
+        \begin{cases} 
+            \mathrm{fizzbuzz} & \text{if $n \mod 15 \equiv 0$}\\
+            \mathrm{fizz} & \text{if $n \mod 3 \equiv 0 $}\\
+            \mathrm{buzz} & \text{if $n \mod 5 \equiv 0 $}\\
+            n & \text{otherwise}
+         \end{cases}
+$$
+
+# コード
+コードはデフォルトでシンタックスハイライトされているが、cssを設定しないと色がつかない。
+```haskell
+stack exec ghci
+ghci> import Text.Pandoc.Highlighting
+ghci> putStr $ styleToCss <style> 
+```
+とやると`<style>`に対応したcssが手に入るので好きなのを`default.css`にコピーして使う。
+`<style>`はHaskellを書くことが多そうなので`haddoc`を使う.
+
+さらに`pre`タグがそれっぽくなるようcssで調整した。CSSわからない。
+```css
+pre {
+    background-color: rgb(230,230,230);
+    display: inline-block;
+    min-width: 100%;
+}
+```
+
+
+## 例
+
+```c
+#include<stdio.h>
+int main(int argc, int argv) {
+    printf("Hello world!\n");
+    return 0;
+}
+```
