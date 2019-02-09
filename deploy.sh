@@ -6,6 +6,7 @@ stack exec site build
 
 # Checkout the deploy branch
 git checkout -b deploy
+git pull origin master
 
 # Copy all files in _site to the root
 rsync -a --filter='P _site/'      \
