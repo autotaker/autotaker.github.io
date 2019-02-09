@@ -18,7 +18,7 @@ rsync -a --filter='P _site/'      \
 
 # Commit all generated files
 git add -A
-git commit -m 'Deploy commit'
+git commit -m 'Deploy commit' || true
 
 # Push
 git push origin deploy:master
