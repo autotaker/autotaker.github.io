@@ -21,7 +21,7 @@ git add -A
 git commit -m 'Deploy commit'
 
 # Push
-git push origin deploy:gh-pages
+git push origin deploy:master
 
 # Go back to the master branch
-git checkout master
+git checkout develop
