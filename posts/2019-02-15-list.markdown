@@ -1,0 +1,43 @@
+---
+title: リストリテラルと融合変換
+tags: Haskell, GHC
+description: リストリテラルがどのようにコンパイルされるか
+---
+
+# はじめに
+Haskellで`sum [1,2,3]`はどのようにコンパイルされるでしょうか。
+```Haskell
+module Hoge
+sumOf3 :: Int
+sumOf3 = sum [1,2,3] 
+```
+`-O -ddump-simpl`オプションでコンパイルすると定数`6`となっていることがわかります。
+
+ポイントはリストリテラルの脱糖と、fold/build変換です。
+
+## リストリテラル
+`-O`オプションがない場合、GHCは`[1,2,3]`を`1 : 2: 3 : []`に脱糖します。
+一方で、`-O`がある場合は`build (\c n -> c 1 (c 2 (c 3 n)))`という式に脱糖されます。
+
+ここで`build`は`GHC.Base`で定義される関数です。
+```
+build :: (forall b. (a -> b -> b) -> b -> b) -> [a]
+build g = g (:) []
+```
+
+
+
+```Haskell
+sum [1,2,3]
+ == sum (build (\c n -> c 1 (c 2 (c 3 n))))         -- desugar
+ == foldr (+) 0 (build (\c n -> c 1 (c 2 (c 3 n)))) -- inline sum
+ == (\c n -> c 1 (c 2 (c 3 n))) (+) 0               -- fold/build fusion
+ == ((+) 1 ((+) 2 ((+) 3 0)))                       -- inline
+ == 6
+```
+
+
+
+
+
+
