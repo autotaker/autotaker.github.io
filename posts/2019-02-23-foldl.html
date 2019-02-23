@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="x-ua-compatible" content="ie=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>autotaker's blog - foldlとfoldl'について</title>
+        <link rel="stylesheet" href="../css/default.css" />
+        <script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div class="content">
+        <header>
+            <div class="logo">
+                <a href="../">autotaker's blog</a>
+            </div>
+            <nav>
+                <a href="../profile.html">Profile</a>
+                <a href="../archive.html">Archive</a>
+            </nav>
+        </header>
+
+        <main role="main">
+            <h1>foldlとfoldl'について</h1>
+            <article>
+    <section class="header">
+        Posted on February 23, 2019<br>
+        
+    </section>
+    <section class="header">
+        
+        Tags: <a href="../tags/Haskell.html">Haskell</a>, <a href="../tags/%E9%81%85%E5%BB%B6%E8%A9%95%E4%BE%A1.html">遅延評価</a>
+        
+    </section>
+    <section>
+        <h1 id="foldl">foldl</h1>
+<p>今から5年ほど前、base-4.7.0.2(GHC 7.8.4)の時代まで、<code>foldl</code>は以下のように定義されていました。</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb1-1" title="1"><span class="fu">foldl</span><span class="ot">        ::</span> (b <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> b <span class="ot">-&gt;</span> [a] <span class="ot">-&gt;</span> b</a>
+<a class="sourceLine" id="cb1-2" title="2"><span class="fu">foldl</span> f z0 xs0 <span class="fu">=</span> lgo z0 xs0</a>
+<a class="sourceLine" id="cb1-3" title="3">             <span class="kw">where</span></a>
+<a class="sourceLine" id="cb1-4" title="4">                lgo z []     <span class="fu">=</span>  z</a>
+<a class="sourceLine" id="cb1-5" title="5">                lgo z (x<span class="fu">:</span>xs) <span class="fu">=</span> lgo (f z x) xs</a></code></pre></div>
+<p><a href="https://hackage.haskell.org/package/base-4.7.0.2/docs/src/GHC-List.html#foldl#foldl">ソース</a></p>
+<p>これはみなさん教科書で習う<code>foldl</code>ですね。</p>
+<p>しかしbase-4.8(GHC 7.10)から<code>foldl</code>は大きく変わってしまいました。</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb2-1" title="1"><span class="fu">foldl</span><span class="ot"> ::</span> <span class="dt">Foldable</span> t <span class="ot">=&gt;</span> (b <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> b <span class="ot">-&gt;</span> t a <span class="ot">-&gt;</span> b</a></code></pre></div>
+<p><a href="https://hackage.haskell.org/package/base-4.8.0.0/docs/Data-List.html#v:foldl">ソース</a></p>
+<p>まず型からして違います。<a href="https://wiki.haskell.org/Foldable_Traversable_In_Prelude">Foldable/Traversable Proposal</a>によって、<code>foldl</code>, <code>foldr</code>, <code>sum</code>, <code>any</code>などの様々な関数が、リストだけでなく<code>Foldable</code>型クラス上で定義されるようになりました。</p>
+<p>そしてその実装も大きく変わっています。</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb3-1" title="1"><span class="fu">foldl</span><span class="ot"> ::</span> <span class="kw">forall</span> a b<span class="fu">.</span> (b <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> b <span class="ot">-&gt;</span> [a] <span class="ot">-&gt;</span> b</a>
+<a class="sourceLine" id="cb3-2" title="2"><span class="ot">{-# INLINE foldl #-}</span></a>
+<a class="sourceLine" id="cb3-3" title="3"><span class="fu">foldl</span> k z0 xs <span class="fu">=</span></a>
+<a class="sourceLine" id="cb3-4" title="4">  <span class="fu">foldr</span> (\(<span class="ot">v::</span>a) (<span class="ot">fn::</span>b<span class="ot">-&gt;</span>b) <span class="ot">-&gt;</span> oneShot (\(<span class="ot">z::</span>b) <span class="ot">-&gt;</span> fn (k z v))) (<span class="fu">id</span><span class="ot"> ::</span> b <span class="ot">-&gt;</span> b) xs z0</a></code></pre></div>
+<p><code>foldl</code>が<code>foldr</code>を用いて実装されています。 この定義は本当に正しいのか、確認してみましょう。</p>
+<p><code>foldr</code>は次のように定義されています。</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb4-1" title="1"><span class="fu">foldr</span><span class="ot"> ::</span> (a <span class="ot">-&gt;</span> b <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> b <span class="ot">-&gt;</span> [a] <span class="ot">-&gt;</span> b</a>
+<a class="sourceLine" id="cb4-2" title="2"><span class="fu">foldr</span> k z <span class="fu">=</span> go</a>
+<a class="sourceLine" id="cb4-3" title="3">          <span class="kw">where</span></a>
+<a class="sourceLine" id="cb4-4" title="4">            go []     <span class="fu">=</span> z</a>
+<a class="sourceLine" id="cb4-5" title="5">            go (y<span class="fu">:</span>ys) <span class="fu">=</span> y <span class="ot">`k`</span> go ys</a></code></pre></div>
+<p>この定義に従って<code>foldl</code>を変換していきましょう。</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb5-1" title="1"><span class="fu">foldl</span> k z0 xs </a>
+<a class="sourceLine" id="cb5-2" title="2"> <span class="fu">==</span> <span class="fu">foldr</span> (\v fn <span class="ot">-&gt;</span> oneShot (\z <span class="ot">-&gt;</span> fn (k z v))) <span class="fu">id</span> xs z0</a>
+<a class="sourceLine" id="cb5-3" title="3"> <span class="co">-- foldrをインライン展開</span></a>
+<a class="sourceLine" id="cb5-4" title="4"> <span class="fu">==</span> go xs z0</a>
+<a class="sourceLine" id="cb5-5" title="5">    <span class="kw">where</span> go [] <span class="fu">=</span> <span class="fu">id</span></a>
+<a class="sourceLine" id="cb5-6" title="6">          go (y<span class="fu">:</span>ys) <span class="fu">=</span> (\v fn <span class="ot">-&gt;</span> oneShot (\z <span class="ot">-&gt;</span> fn (k z v))) y (go ys)</a>
+<a class="sourceLine" id="cb5-7" title="7"> <span class="co">-- beta簡約</span></a>
+<a class="sourceLine" id="cb5-8" title="8"> <span class="fu">==</span> go xs z0</a>
+<a class="sourceLine" id="cb5-9" title="9">    <span class="kw">where</span> go [] <span class="fu">=</span> <span class="fu">id</span></a>
+<a class="sourceLine" id="cb5-10" title="10">          go (y<span class="fu">:</span>ys) <span class="fu">=</span> oneShot (\z <span class="ot">-&gt;</span> go ys (k z y))</a></code></pre></div>
+<p><code>oneShot</code>はコンパイラへのヒントで実態はid関数なので、これを簡約します。</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb6-1" title="1"><span class="fu">foldl</span> k z0 xs </a>
+<a class="sourceLine" id="cb6-2" title="2"> <span class="fu">==</span> <span class="fu">...</span></a>
+<a class="sourceLine" id="cb6-3" title="3"> <span class="fu">==</span> go xs z0</a>
+<a class="sourceLine" id="cb6-4" title="4">    <span class="kw">where</span> go [] <span class="fu">=</span> <span class="fu">id</span></a>
+<a class="sourceLine" id="cb6-5" title="5">          go (y<span class="fu">:</span>ys) <span class="fu">=</span> (\z <span class="ot">-&gt;</span> go ys (k z y))</a></code></pre></div>
+<p>さて、ここで再帰関数<code>go</code>は１引数関数ですが、返す値の型は<code>b -&gt; b</code>です。すなわち、もう一つ引数を取ります。加えて、<code>go</code>関数を呼び出す箇所では必ず、2つの引数を同時に渡しています。このような場合<code>go</code>の定義をη展開して２引数関数にしても良いことが知られています。(<a href="https://ghc.haskell.org/trac/ghc/wiki/CallArity">Call Arity変換</a>)</p>
+<p><code>go</code>を２引数関数に変換すると以下のようになります。</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb7-1" title="1"> <span class="fu">==</span> go xs z0</a>
+<a class="sourceLine" id="cb7-2" title="2">    <span class="kw">where</span> go [] eta <span class="fu">=</span> <span class="fu">id</span> eta</a>
+<a class="sourceLine" id="cb7-3" title="3">          go (y<span class="fu">:</span>ys) eta <span class="fu">=</span> (\z <span class="ot">-&gt;</span> go ys (k z y)) eta</a>
+<a class="sourceLine" id="cb7-4" title="4"> <span class="co">-- idをインライン展開、beta簡約</span></a>
+<a class="sourceLine" id="cb7-5" title="5"> <span class="fu">==</span> go xs z0</a>
+<a class="sourceLine" id="cb7-6" title="6">    <span class="kw">where</span> go [] eta <span class="fu">=</span> eta</a>
+<a class="sourceLine" id="cb7-7" title="7">          go (y<span class="fu">:</span>ys) eta <span class="fu">=</span> go ys (k eta y)</a></code></pre></div>
+<p>さてこの定義をbase-4.7以前の定義と見比べてみましょう。</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb8-1" title="1"><span class="fu">foldl</span><span class="ot">        ::</span> (b <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> b <span class="ot">-&gt;</span> [a] <span class="ot">-&gt;</span> b</a>
+<a class="sourceLine" id="cb8-2" title="2"><span class="fu">foldl</span> f z0 xs0 <span class="fu">=</span> lgo z0 xs0</a>
+<a class="sourceLine" id="cb8-3" title="3">             <span class="kw">where</span></a>
+<a class="sourceLine" id="cb8-4" title="4">                lgo z []     <span class="fu">=</span>  z</a>
+<a class="sourceLine" id="cb8-5" title="5">                lgo z (x<span class="fu">:</span>xs) <span class="fu">=</span> lgo (f z x) xs</a></code></pre></div>
+<p>引数の順番こそ違いますが、全く同じ形をしていることがわかると思います。</p>
+<p>コンパイルの過程では今説明したような変換が実際に行われているので安心して<code>foldl</code>を使うことができます。(うまくいってないケースを見つけたらGHCにバグ報告を行いましょう)</p>
+<h1 id="foldl-1">foldl’</h1>
+<p><code>foldl'</code>はGHCが今ほど賢くなかった時代に作られた<code>foldl</code>の正格なバージョンです。 <code>foldl</code>同様現在は<code>foldr</code>を使って以下のように定義されています。</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb9-1" title="1">foldl' k z0 xs <span class="fu">=</span></a>
+<a class="sourceLine" id="cb9-2" title="2">  <span class="fu">foldr</span> (\(<span class="ot">v::</span>a) (<span class="ot">fn::</span>b<span class="ot">-&gt;</span>b) <span class="ot">-&gt;</span> oneShot (\(<span class="ot">z::</span>b) <span class="ot">-&gt;</span> z <span class="ot">`seq`</span> fn (k z v))) (<span class="fu">id</span><span class="ot"> ::</span> b <span class="ot">-&gt;</span> b) xs z0</a></code></pre></div>
+<p>これも同様に変形していくと以下のような形になります。</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb10-1" title="1">foldl' k z0 xs</a>
+<a class="sourceLine" id="cb10-2" title="2"> <span class="fu">==</span> go xs z0</a>
+<a class="sourceLine" id="cb10-3" title="3">    <span class="kw">where</span> go [] eta <span class="fu">=</span> eta</a>
+<a class="sourceLine" id="cb10-4" title="4">          go (y<span class="fu">:</span>ys) eta <span class="fu">=</span> eta <span class="ot">`seq`</span> go ys (k eta y)</a></code></pre></div>
+<p><code>foldl</code>との違いは再帰関数<code>go</code>の第２引数(ここではaccumulation引数と呼びます)を正格に評価するということです。</p>
+<h1 id="foldl-vs-foldl">foldl vs foldl’</h1>
+<p>さて、一般に<code>foldl'</code>の方がaccumulation引数を正格に評価するため、効率が良いとされています。しかし最近のGHCは十分に賢いのでほとんどの場合<code>foldl</code>を使って大丈夫です。その理由はGHCの正格性解析にあります。</p>
+<h2 id="正格性">正格性</h2>
+<p>一般に<span class="math inline">\(n\)</span>-引数関数<span class="math inline">\(f\)</span>が<span class="math inline">\(i\)</span>番目の引数について正格であるとは、 任意の項<span class="math inline">\(e_1 \dots e_n\)</span>に対して<span class="math inline">\(e_i = \bot\)</span>ならば<span class="math inline">\(f\ e_1 ... e_n = \bot\)</span> が成り立つことと定義されます。 ここで<span class="math inline">\(\bot\)</span>はボトムすなわち停止しない項あるいはエラーを発生させる項(<code>undefined</code>)をさします。 言い換えると、「<span class="math inline">\(i\)</span>番目の引数に<code>undefined</code>を渡したならば、それ以外の引数がどうだったとしても関数呼び出しの結果は停止しないあるいは例外を発生させる」ということです。</p>
+<p>例えば</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb11-1" title="1"><span class="ot">f ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Int</span></a>
+<a class="sourceLine" id="cb11-2" title="2">f x y <span class="fu">=</span> <span class="kw">if</span> x <span class="fu">&gt;</span> y <span class="kw">then</span> x <span class="kw">else</span> y</a></code></pre></div>
+<p>は<code>x &gt; y</code>の評価時に両方の引数を評価するので、両方の引数に関して正格です。 一方</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb12-1" title="1"><span class="ot">f ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Int</span></a>
+<a class="sourceLine" id="cb12-2" title="2">f x y <span class="fu">=</span> <span class="kw">if</span> x <span class="fu">&gt;</span> <span class="dv">0</span> <span class="kw">then</span> x <span class="kw">else</span> y</a></code></pre></div>
+<p>は第１引数に関しては正格ですが、第２引数に関しては正格ではありません。 実際<code>f 1 undefined</code>は<code>1</code>に評価されるためです。</p>
+<p>GHCは適当な方法(<a href="https://ghc.haskell.org/trac/ghc/wiki/Commentary/Compiler/Demand">Demand Analysis</a>)で関数の正格性を推論します。この推論は健全ですが、完全ではありません。すなわち、実際には正格なのに正格でないと判断するケースがあります。 GHCがどのように正格性を推論したかは<code>-ddump-str-signatures</code>でわかります。</p>
+<p>試しに以下のプログラムで実験してみましょう。</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb13-1" title="1"><span class="kw">module</span> <span class="dt">Hoge</span> <span class="kw">where</span></a>
+<a class="sourceLine" id="cb13-2" title="2"></a>
+<a class="sourceLine" id="cb13-3" title="3"><span class="ot">f1 ::</span> <span class="dt">Ord</span> a <span class="ot">=&gt;</span> a <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> a</a>
+<a class="sourceLine" id="cb13-4" title="4">f1 x y <span class="fu">=</span> <span class="kw">if</span> x <span class="fu">&gt;</span> y <span class="kw">then</span> x <span class="kw">else</span> y</a>
+<a class="sourceLine" id="cb13-5" title="5"><span class="ot">{-# NOINLINE f1 #-}</span></a>
+<a class="sourceLine" id="cb13-6" title="6"></a>
+<a class="sourceLine" id="cb13-7" title="7"><span class="ot">g ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Int</span></a>
+<a class="sourceLine" id="cb13-8" title="8">g x y <span class="fu">=</span> f1 x y</a>
+<a class="sourceLine" id="cb13-9" title="9"></a>
+<a class="sourceLine" id="cb13-10" title="10"><span class="ot">f ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Int</span></a>
+<a class="sourceLine" id="cb13-11" title="11">f x y <span class="fu">=</span> <span class="kw">if</span> x <span class="fu">&gt;</span> y <span class="kw">then</span> x <span class="kw">else</span> y</a></code></pre></div>
+<p>このプログラムを<code>-O -ddump-str-signatures</code>つきでコンパイルすると以下の出力をえます。</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><a class="sourceLine" id="cb14-1" title="1">[<span class="ex">1</span> of 1] Compiling Hoge             ( Hoge.hs, Hoge.o )</a>
+<a class="sourceLine" id="cb14-2" title="2"></a>
+<a class="sourceLine" id="cb14-3" title="3">==================== <span class="ex">Strictness</span> signatures ====================</a>
+<a class="sourceLine" id="cb14-4" title="4"><span class="ex">Hoge.</span><span class="va">$trModule</span>: m</a>
+<a class="sourceLine" id="cb14-5" title="5"><span class="ex">Hoge.f</span>: <span class="op">&lt;</span>S(S),<span class="ex">1*U</span>(U)<span class="op">&gt;&lt;</span><span class="ex">S</span>(S),<span class="ex">1*U</span>(U)<span class="op">&gt;</span><span class="ex">m</span></a>
+<a class="sourceLine" id="cb14-6" title="6"><span class="ex">Hoge.f1</span>: <span class="op">&lt;</span>S(LLLLC(C(S))<span class="ex">LLL</span>),<span class="ex">1*U</span>(A,A,A,A,1*C1(C1(U)),<span class="ex">A</span>,A,A)<span class="op">&gt;&lt;</span><span class="ex">L</span>,U<span class="op">&gt;&lt;</span>L,U<span class="op">&gt;</span></a>
+<a class="sourceLine" id="cb14-7" title="7"><span class="ex">Hoge.g</span>: <span class="op">&lt;</span>L,U<span class="op">&gt;&lt;</span>L,U<span class="op">&gt;</span></a>
+<a class="sourceLine" id="cb14-8" title="8"></a>
+<a class="sourceLine" id="cb14-9" title="9"></a>
+<a class="sourceLine" id="cb14-10" title="10"></a>
+<a class="sourceLine" id="cb14-11" title="11">==================== <span class="ex">Strictness</span> signatures ====================</a>
+<a class="sourceLine" id="cb14-12" title="12"><span class="ex">Hoge.</span><span class="va">$trModule</span>: m</a>
+<a class="sourceLine" id="cb14-13" title="13"><span class="ex">Hoge.f</span>: <span class="op">&lt;</span>S(S),<span class="ex">1*U</span>(U)<span class="op">&gt;&lt;</span><span class="ex">S</span>(S),<span class="ex">1*U</span>(U)<span class="op">&gt;</span><span class="ex">m</span></a>
+<a class="sourceLine" id="cb14-14" title="14"><span class="ex">Hoge.f1</span>: <span class="op">&lt;</span>S(LLLLC(C(S))<span class="ex">LLL</span>),<span class="ex">1*U</span>(A,A,A,A,1*C1(C1(U)),<span class="ex">A</span>,A,A)<span class="op">&gt;&lt;</span><span class="ex">L</span>,U<span class="op">&gt;&lt;</span>L,U<span class="op">&gt;</span></a>
+<a class="sourceLine" id="cb14-15" title="15"><span class="ex">Hoge.g</span>: <span class="op">&lt;</span>L,U<span class="op">&gt;&lt;</span>L,U<span class="op">&gt;</span></a></code></pre></div>
+<p>同じような内容が２回出力されていますが気にしないてください。 <code>Hoge.f: &lt;S(S),1*U(U)&gt;&lt;S(S),1*U(U)&gt;m</code>というのが解析結果を意味します。一つ目の<code>&lt;S(S),1*U(U)&gt;</code>の１番左の文字が第１引数の正格性を表していて<code>S</code>が正格、<code>L</code>が非正格を意味ということです。つまり、<code>f</code>の両方の引数が正格であるということを意味しています。 一方で<code>Hoge.g</code>の解析結果は<code>&lt;L,U&gt;&lt;L,U&gt;</code>となっています。これは両方の引数が非正格であることを表します。<code>f</code>と<code>g</code>は同じ振る舞いをするはずですが解析結果が異なっています。これはGHCの正格性解析の不完全性を表しています。</p>
+<p>この原因は関数<code>f1</code>の多相性にあります。</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb15-1" title="1"><span class="ot">f1 ::</span> <span class="dt">Ord</span> a <span class="ot">=&gt;</span> a <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> a</a>
+<a class="sourceLine" id="cb15-2" title="2">f1 x y <span class="fu">=</span> <span class="kw">if</span> x <span class="fu">&gt;</span> y <span class="kw">then</span> x <span class="kw">else</span> y</a></code></pre></div>
+<p><code>f1</code>が正格かどうかは<code>x &gt; y</code>が<code>x</code>,<code>y</code>を正格に評価するかに依存します。 しかし、<code>&gt;</code>は型クラス<code>Ord</code>上の関数であるのでこの時点では推論しようがありません。従って、保守的に非正格であると判定します。従って<code>f1</code>は<code>x</code>, <code>y</code>の両方に非正格だと推論されます。</p>
+<p>そのあとに<code>g</code>の正格性が推論されます。</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb16-1" title="1">g x y <span class="fu">=</span> f1 x y</a></code></pre></div>
+<p>gは関数<code>f1</code>を呼び出すので<code>f1</code>の正格性から正格性を推論します。 <code>f1</code>は非正格だと推論されていたので<code>g</code>も非正格となります。</p>
+<h2 id="foldlの正格性">foldlの正格性</h2>
+<p>話を<code>foldl</code>に戻しましょう。</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb17-1" title="1"><span class="fu">foldl</span> k z0 xs</a>
+<a class="sourceLine" id="cb17-2" title="2"> <span class="fu">==</span> go xs z0</a>
+<a class="sourceLine" id="cb17-3" title="3">    <span class="kw">where</span> go [] eta <span class="fu">=</span> eta</a>
+<a class="sourceLine" id="cb17-4" title="4">          go (y<span class="fu">:</span>ys) eta <span class="fu">=</span> go ys (k eta y)</a></code></pre></div>
+<p>さて問題です。GHCは<code>go</code>の正格性をどのように判定するでしょうか?</p>
+<p>第１引数については正格だと判定します。なぜならパターンマッチによって 第１引数を必ず評価するからです。一方第二引数についてはどうでしょうか？</p>
+<p>答えは「<code>k</code>の第１引数の正格性に依存する」です。<code>k</code>が多相化されている、あるいは変数である時など、正格性が自明でない場合は注意する必要があります。</p>
+<p>一方<code>foldl'</code>の場合を考えましょう。</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb18-1" title="1">foldl' k z0 xs</a>
+<a class="sourceLine" id="cb18-2" title="2"> <span class="fu">==</span> go xs z0</a>
+<a class="sourceLine" id="cb18-3" title="3">    <span class="kw">where</span> go [] eta <span class="fu">=</span> eta</a>
+<a class="sourceLine" id="cb18-4" title="4">          go (y<span class="fu">:</span>ys) eta <span class="fu">=</span> eta <span class="ot">`seq`</span> go ys (k eta y)</a></code></pre></div>
+<p>この場合は<code>go</code>は両方の引数について明らかに正格です。</p>
+<p>それでは<code>foldl'</code>を使うべきなのでしょうか? 実は<code>foldl'</code>と同等の関数を<code>foldl</code>で実現できます。</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb19-1" title="1">foldl' k z0 xs  <span class="fu">=</span> <span class="fu">foldl</span> (\acc z <span class="ot">-&gt;</span> acc <span class="ot">`seq`</span> k acc z) z0 xs</a></code></pre></div>
+<p>とすれば良いです。 右辺を展開してみると以下のようになります。</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb20-1" title="1"><span class="fu">foldl</span> (\acc z <span class="ot">-&gt;</span> acc <span class="ot">`seq`</span> k acc z) z0 xs</a>
+<a class="sourceLine" id="cb20-2" title="2"> <span class="fu">==</span> go xs z0</a>
+<a class="sourceLine" id="cb20-3" title="3">    <span class="kw">where</span> go [] eta <span class="fu">=</span> eta</a>
+<a class="sourceLine" id="cb20-4" title="4">          go (y<span class="fu">:</span>ys) eta <span class="fu">=</span> go ys (eta <span class="ot">`seq`</span> k eta y)</a></code></pre></div>
+<p><code>foldl'</code>を展開した結果とは微妙に異なりますが、正格性解析の結果は <code>foldl'</code>の場合と同じように<code>go</code>は両方の引数に関して正格となります。</p>
+<p>ここまで聞いた読者の中には 「引数が正格だからといって関数呼び出しはcall-by-needなのだから やはりサンクがたまるのではないか？」と考えている人もいると思いますが 実は <strong>GHCは正格な引数についてはcall-by-valueで関数を呼び出します。</strong></p>
+<p>従って以下のようなプログラムにコンパイルされます。</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb21-1" title="1"><span class="fu">foldl</span> (\acc z <span class="ot">-&gt;</span> acc <span class="ot">`seq`</span> k acc z) z0 xs</a>
+<a class="sourceLine" id="cb21-2" title="2"> <span class="fu">==</span> go xs z0</a>
+<a class="sourceLine" id="cb21-3" title="3">    <span class="kw">where</span> go [] eta <span class="fu">=</span> eta</a>
+<a class="sourceLine" id="cb21-4" title="4">          go (y<span class="fu">:</span>ys) eta <span class="fu">=</span> <span class="kw">case</span> eta <span class="ot">`seq`</span> k eta y <span class="kw">of</span> </a>
+<a class="sourceLine" id="cb21-5" title="5">            v <span class="ot">-&gt;</span> go ys v</a></code></pre></div>
+<p>これは<code>foldl'</code>の実装と全く同じ振る舞いをします。 従って歴史的な事情はどうあれ、現在のGHCでは<code>foldl'</code>のライブラリ関数としての重要性はあまり高くないと思われます。</p>
+<h1 id="まとめ">まとめ</h1>
+<p><code>foldl</code>と<code>foldl'</code>がどのようにコンパイルされるかを解説しました。 また、<code>foldl' k</code>は<code>foldl (\acc z -&gt; acc `seq` k acc z)</code>と同じ振る舞いをすることを紹介しました。</p>
+<h2 id="余談">余談</h2>
+<p>正格性解析の罠となる関数が一つあります。それは<code>Debug.Trace.trace</code>及び<code>Debug.Trace.traceSho</code>です。</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb22-1" title="1">Debug.Trace.trace<span class="ot"> ::</span> <span class="dt">String</span> <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> a</a>
+<a class="sourceLine" id="cb22-2" title="2">Debug.Trace.traceShow<span class="ot"> ::</span> <span class="dt">Show</span> b <span class="ot">=&gt;</span> b <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> a</a></code></pre></div>
+<p>この関数は実際には第２引数を返すのにもかかわらず、両方の引数に関してなぜか非正格だとみなされます。 従ってある関数の呼び出しをデバッグしたくて<code>f x = trace "hoge" $ e</code>などとすると、<code>e</code>の中でどれだけ<code>x</code>を評価していようと、<code>x</code>は非正格だと推論されます。 <code>f !x = trace "hoge" $ e</code>などとすれば大丈夫です。</p>
+    </section>
+    
+    <div id="disqus_thread"></div>
+    <script>
+    /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+    var disqus_config = function () {
+    this.page.url = "https://autotaker.github.io" + "/posts/2019-02-23-foldl.html";  // Replace PAGE_URL with your page's canonical URL variable
+    this.page.identifier = "/posts/2019-02-23-foldl.html"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+    };
+    (function() { // DON'T EDIT BELOW THIS LINE
+    var d = document, s = d.createElement('script');
+    s.src = 'https://autotaker.disqus.com/embed.js';
+    s.setAttribute('data-timestamp', +new Date());
+    (d.head || d.body).appendChild(s);
+    })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+                            
+</article>
+
+        </main>
+
+        <footer>
+            Site proudly generated by
+            <a href="http://jaspervdj.be/hakyll">Hakyll</a>
+        </footer>
+        </div>
+    </body>
+</html>
