@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="x-ua-compatible" content="ie=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>autotaker's blog - コンパイル時に素数判定を行ってみた。</title>
+        <link rel="stylesheet" href="../css/default.css" />
+        <script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div class="content">
+        <header>
+            <div class="logo">
+                <a href="../">autotaker's blog</a>
+            </div>
+            <nav>
+                <a href="../profile.html">Profile</a>
+                <a href="../archive.html">Archive</a>
+            </nav>
+        </header>
+
+        <main role="main">
+            <h1>コンパイル時に素数判定を行ってみた。</h1>
+            <article>
+    <section class="header">
+        Posted on March 17, 2019<br>
+        
+    </section>
+    <section class="header">
+        
+        Tags: <a href="../tags/Haskell.html">Haskell</a>, <a href="../tags/%E5%9E%8B%E3%83%AC%E3%83%99%E3%83%AB.html">型レベル</a>, <a href="../tags/%E7%B4%A0%E6%95%B0%E5%88%A4%E5%AE%9A.html">素数判定</a>
+        
+    </section>
+    <section>
+        <h1 id="はじめに">はじめに</h1>
+<p>昔々、あるところにPrimeFactor社という会社がありました。 PrimeFactor社の主力商品は素数です。メルセンヌ素数、双子素数、安全素数など様々な商品を取り揃えており、 ソースコードにハードコードして出荷して莫大な利益を上げていました。</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb1-1" title="1"><span class="ot">prime ::</span> <span class="dt">Integer</span></a>
+<a class="sourceLine" id="cb1-2" title="2">prime <span class="fu">=</span> <span class="dv">1000000007</span></a></code></pre></div>
+<p>PrimeFactor社は研究開発に熱心な会社でした。社の売り上げの多くを技術開発に当て、 ついに量子計算を用いた素因数分解計算機の開発に成功しました。</p>
+<p>ある日のこと、お客様から一通の苦情が送られてきました。 「おたくの素数を使ってガロア体<span class="math inline">\(F_{p}\)</span>を作っていたら逆元が存在しなくてプログラムが例外を投げたぞ。 素数のふりして合成数を出荷するなんて詐欺じゃないか」 これは一大事です。お客様に出荷した素数を確認したところ <span class="math inline">\(p = 3713287801 = 571 \times 2281 \times 2851\)</span>であることがわかりました。</p>
+<p>原因を調査するために製品の製造過程を調べたところ、品質検査を行うプログラムが<a href="https://ja.wikipedia.org/wiki/フェルマーの小定理#フェルマーテスト">Fermatテスト</a>を行なっていることがわかりました。</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb2-1" title="1"><span class="ot">checkPrime ::</span> <span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">Bool</span></a>
+<a class="sourceLine" id="cb2-2" title="2">checkPrime n <span class="fu">=</span> </a>
+<a class="sourceLine" id="cb2-3" title="3">    <span class="fu">and</span> <span class="fu">&lt;$&gt;</span> (replicateM <span class="dv">100</span> <span class="fu">$</span> <span class="kw">do</span></a>
+<a class="sourceLine" id="cb2-4" title="4">      a <span class="ot">&lt;-</span> randomRIO (<span class="dv">2</span>,n)</a>
+<a class="sourceLine" id="cb2-5" title="5">      <span class="fu">pure</span> <span class="fu">$</span> modPow a (n<span class="fu">-</span><span class="dv">1</span>) n <span class="fu">==</span>  <span class="dv">1</span>)</a></code></pre></div>
+<p><span class="math inline">\(p = 3713287801\)</span>は<a href="https://ja.wikipedia.org/wiki/カーマイケル数">カーマイケル数</a>だったので運悪く検査を通過してしまったようです。 PrimeFactor社は素数検査アルゴリズムを<a href="https://ja.wikipedia.org/wiki/ミラー–ラビン素数判定法">Miller-Rabin法</a>に切り替えました。 しかしながら、Miller-Rabin法も確率的アルゴリズムであるが故に、非常に低い確率ではあるものの、 合成数を出荷してしまう可能性は排除できません。</p>
+<p>そこで、PrimeFactor社は再発防止策として出荷する素数に証明をつけることにしました。 すなわち、誤って合成数が出荷されても埋め込まれたソースコードをコンパイルする時にエラーとなるようにしたいです。 幸いなことに、PrimeFactor社内では最新鋭の素因数分解計算機によって合成数の素因数分解を高速に行うことができます。 一方で出荷先でコンパイル時に行える計算資源は非常に限られています。 どのようにすれば良いでしょうか？</p>
+<h1 id="本題">本題</h1>
+<p>さて、しょうもない茶番にお付き合いいただき、ありがとうございます。 今回のお題は「型レベル自然数を使って、与えられた数が素数であった時のみにコンパイルが通るプログラムを作る」です。</p>
+<h1 id="素数であることの証拠">素数であることの証拠</h1>
+<p>※しばらく数学的な議論が続きます。証明等に興味のない方はこのセクションの最後の<a href="#素数検証アルゴリズム">素数検証アルゴリズム</a>まで飛ばしても大丈夫です。</p>
+<h2 id="素数判定アルゴリズムを用いた手法">素数判定アルゴリズムを用いた手法</h2>
+<p>素数判定アルゴリズムは証拠として使えるでしょうか。</p>
+<ul>
+<li><em>試し割り</em>: これは<span class="math inline">\(1 \leq i \leq \sqrt{n}\)</span>を満たす各<span class="math inline">\(i\)</span>について<span class="math inline">\(i\)</span>が<span class="math inline">\(n\)</span>で割り切れないことを試すということです。 しかし、この計算は<span class="math inline">\(O(\sqrt{n})\)</span>なのでをコンパイル時に行うのは現実的ではありません。（実行時でも厳しい）</li>
+<li><em>確率的素数判定法</em>: Miller-Rabin法などの確率的アルゴリズムは合成数を高速に高い確率で検出できますが、素数であることの証明には使えません。 また、コンパイル時に行うため、乱数生成が難しいという問題もあります。</li>
+</ul>
+<h2 id="補助データを用いた手法">補助データを用いた手法</h2>
+<p>入力<span class="math inline">\(n\)</span>のみから素数であることを高速に証明するのは難しそうです。 補助データを用いる場合はどうでしょうか。</p>
+<p>今回は以下の定理を利用します。</p>
+<blockquote>
+<p>整数<span class="math inline">\(n\)</span>が素数である<span class="math inline">\(\iff\)</span>ある<span class="math inline">\(a\)</span>が存在して<span class="math inline">\(\min \{ i \mid 1 &lt; i, a^{i} \mod n = 1\} = n-1\)</span>.</p>
+</blockquote>
+<blockquote>
+<p>証明）</p>
+<ul>
+<li><span class="math inline">\(n\)</span>が素数である時は<span class="math inline">\((Z/Z_n)^* = \{1, \dots, n-1\}\)</span>が位数<span class="math inline">\(n-1\)</span>の巡回群となることから従います。</li>
+<li><span class="math inline">\(n\)</span>が合成数かつ、そのような<span class="math inline">\(a\)</span>が存在したと仮定します。<span class="math inline">\(a^{n-1} \mod n = 1\)</span>より<span class="math inline">\(a\)</span>は<span class="math inline">\(n\)</span>と互いに素です。 この時、<span class="math inline">\(\lambda(n)\)</span>を<a href="https://en.wikipedia.org/wiki/Carmichael_function">カーマイケル関数</a>とすると <span class="math inline">\(n - 1 \leq \lambda(n)\)</span>が成り立ちます。一方で<a href="https://ja.wikipedia.org/wiki/オイラーのφ関数">オイラーのトーシェント関数</a>を<span class="math inline">\(\phi(n)\)</span>とすると <span class="math inline">\(\lambda(n) \leq \phi(n)\)</span>です。今<span class="math inline">\(n\)</span>が合成数なので<span class="math inline">\(\phi(n) &lt; n-1\)</span>です。これは矛盾です。</li>
+</ul>
+</blockquote>
+<p><span class="math inline">\(\min \{ i \mid 1 &lt; i, a^{i} \mod n = 1\}\)</span>は<span class="math inline">\(a\)</span>の<a href="https://en.wikipedia.org/wiki/Multiplicative_order">multiplicative order</a>と呼ばれ、この記事では<span class="math inline">\(\mathrm{order}_n(a)\)</span> と書きます。</p>
+<p>この定理から、<span class="math inline">\(a\)</span>を補助データとして、<span class="math inline">\(\mathrm{order}_n(a) = n-1\)</span>を確かめれば<span class="math inline">\(n\)</span>が素数であることの証拠 になることがわかります。</p>
+<p><span class="math inline">\(\mathrm{order}_n(a) = n - 1\)</span>を確かめる方法について考えます。 まず<span class="math inline">\(a^{n-1} \mod n = 1\)</span>であることを確かめます。この時、<span class="math inline">\(\mathrm{order}_n(a)\)</span>は<span class="math inline">\(n-1\)</span>の 約数であることが証明できます。</p>
+<blockquote>
+<p>証明） <span class="math inline">\(k = \mathrm{order}_n(a)\)</span>とします。定義より、<span class="math inline">\(a^k = 1\)</span>かつ<span class="math inline">\(0 &lt; i &lt; k\)</span>となる<span class="math inline">\(i\)</span>に対し<span class="math inline">\(a^i \mod n \neq 1\)</span>です。 <span class="math inline">\(k\)</span>が<span class="math inline">\(n-1\)</span>の約数でないとすると、<span class="math inline">\(n - 1 = qk + r\)</span>となる<span class="math inline">\(0 &lt; r &lt; k\)</span>が存在します。 ここで<span class="math inline">\(1 = a^{n-1} = a^{qk+r} = (a^k)^q a^r = 1 a^r = a^r \neq 1 (\mod n)\)</span>より矛盾します。</p>
+</blockquote>
+<p>従って<span class="math inline">\(\mathrm{order}_n(a) &lt; n\)</span>の時、ある<span class="math inline">\(n-1\)</span>の素因数<span class="math inline">\(p\)</span>が存在して、<span class="math inline">\(a^{\frac{n-1}{p}} \mod n = 1\)</span>です。</p>
+<blockquote>
+<p>証明) <span class="math inline">\(\mathrm{order}_n(a) q = n - 1\)</span>となる<span class="math inline">\(q &gt; 1\)</span>が存在します。<span class="math inline">\(q\)</span>の素因数（<span class="math inline">\(n-1\)</span>の素因数でもある)を<span class="math inline">\(p\)</span>とすれば <span class="math inline">\(a^{\frac{n-1}{p}} \mod n= 1\)</span>です。</p>
+</blockquote>
+<p>このことから、<span class="math inline">\(n -1\)</span>の全ての素因数<span class="math inline">\(p_1 \dots p_m\)</span>について<span class="math inline">\(a^{\frac{n-1}{p_i}} \mod n \neq 1\)</span>を確かめれば <span class="math inline">\(\mathrm{order}_n(a) = n-1\)</span>となります。</p>
+<h2 id="素数検証アルゴリズム">素数検証アルゴリズム</h2>
+<p>まとめると、次のようなアルゴリズムで素数であることを検証できます。</p>
+<blockquote>
+<p><em>入力</em>：整数<span class="math inline">\(n\)</span>, <span class="math inline">\(a\)</span>, <span class="math inline">\(p_1, \dots, p_m\)</span></p>
+<p><em>出力</em>: 整数<span class="math inline">\(n\)</span>が素数であるかつ、<span class="math inline">\(a\)</span>, <span class="math inline">\(p_1, \dots,p_m\)</span>がその証拠となる時<code>True</code>、そうでない時、<code>False</code></p>
+<p><em>アルゴリズム</em>:</p>
+<ol type="1">
+<li><span class="math inline">\(p_1, \dots, p_m\)</span>が<span class="math inline">\(n\)</span>の素因数全体でない場合、<code>False</code>を出力</li>
+<li><span class="math inline">\(a^{n-1} \mod n \neq 1\)</span>の時、<code>False</code>を出力</li>
+<li><p>各 <span class="math inline">\(1 \leq i \leq m\)</span>について</p>
+<ol type="1">
+<li><span class="math inline">\(a^{\frac{n-1}{p_i}} \mod n = 1\)</span>ならば<code>False</code>を出力</li>
+</ol></li>
+<li><p><code>True</code>を出力</p></li>
+</ol>
+</blockquote>
+<h1 id="素数検証アルゴリズムの型レベル実装">素数検証アルゴリズムの型レベル実装</h1>
+<p>それでは先ほどのアルゴリズムをHaskellの型レベル自然数を用いて実装していきます。</p>
+<p>まずは今回使うモジュールと言語拡張一覧です。</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb3-1" title="1"><span class="ot">{-# LANGUAGE GADTs, DataKinds, UndecidableInstances, KindSignatures, TypeOperators, TypeFamilies #-}</span></a>
+<a class="sourceLine" id="cb3-2" title="2"><span class="kw">module</span> <span class="dt">Prime</span> <span class="kw">where</span></a>
+<a class="sourceLine" id="cb3-3" title="3"><span class="kw">import</span> <span class="dt">Data.Type.Bool</span></a>
+<a class="sourceLine" id="cb3-4" title="4"><span class="kw">import</span> <span class="dt">Data.Type.Equality</span></a>
+<a class="sourceLine" id="cb3-5" title="5"><span class="kw">import</span> <span class="dt">GHC.TypeLits</span></a>
+<a class="sourceLine" id="cb3-6" title="6"><span class="kw">import</span> <span class="dt">Data.Kind</span></a>
+<a class="sourceLine" id="cb3-7" title="7"><span class="kw">import</span> <span class="dt">Data.Proxy</span></a></code></pre></div>
+<h2 id="素因数チェック">素因数チェック</h2>
+<p>まず最初に、<span class="math inline">\(p_1,\ldots, p_n\)</span>が<span class="math inline">\(n-1\)</span>の素因数全体であることを確かめます。</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb4-1" title="1"><span class="kw">type</span> <span class="kw">family</span> <span class="dt">IsFactorization</span> (<span class="ot">n ::</span> <span class="dt">Nat</span>) (<span class="ot">l ::</span> [<span class="dt">Nat</span>])<span class="ot"> ::</span> <span class="dt">Bool</span> <span class="kw">where</span></a>
+<a class="sourceLine" id="cb4-2" title="2">    <span class="dt">IsFactorization</span> <span class="dv">0</span> l <span class="fu">=</span> <span class="dt">False</span></a>
+<a class="sourceLine" id="cb4-3" title="3">    <span class="dt">IsFactorization</span> <span class="dv">1</span> '[] <span class="fu">=</span> <span class="dt">True</span></a>
+<a class="sourceLine" id="cb4-4" title="4">    <span class="dt">IsFactorization</span> <span class="dv">1</span> l <span class="fu">=</span> <span class="dt">False</span></a>
+<a class="sourceLine" id="cb4-5" title="5">    <span class="dt">IsFactorization</span> n (p '<span class="fu">:</span> l) <span class="fu">=</span> <span class="dt">Mod</span> n p <span class="fu">==</span> <span class="dv">0</span> <span class="fu">&amp;&amp;</span> <span class="dt">IsFactorizationSub</span> n p l (<span class="dt">Mod</span> n p)</a>
+<a class="sourceLine" id="cb4-6" title="6"><span class="kw">type</span> <span class="kw">family</span> <span class="dt">IsFactorization</span> <span class="dt">Sub</span> n p l m <span class="kw">where</span></a>
+<a class="sourceLine" id="cb4-7" title="7">    <span class="dt">IsFactorizationSub</span> <span class="dv">0</span> _ _ _ <span class="fu">=</span> <span class="dt">TypeError</span> (<span class="dt">Text</span> <span class="st">&quot;Invalid argument 0&quot;</span>)</a>
+<a class="sourceLine" id="cb4-8" title="8">    <span class="dt">IsFactorizationSub</span> n p l <span class="dv">0</span> <span class="fu">=</span> <span class="dt">IsFactorizationSub</span> (<span class="dt">Div</span> n p) p l (<span class="dt">Mod</span> (<span class="dt">Div</span> n p) p)</a>
+<a class="sourceLine" id="cb4-9" title="9">    <span class="dt">IsFactorizationSub</span> n p l _ <span class="fu">=</span> <span class="dt">IsFactorization</span> n l</a></code></pre></div>
+<p><code>IsFactorization n l</code>は自然数<code>n</code>と素数のリスト<code>l</code>を受け取り、<code>l</code>が<code>n</code>の素因数全体かを確かめる型レベル関数です。 <code>IsFactorizaionSub n p l m</code>は補助関数です。ここで注意することがあって、 型レベル計算は<strong>名前呼びの項書き換え系</strong>に型レベル関数ごとに引数の組み合わせでメモ化を行うものだと考えれば良いです。 そのため、一行目の<code>IsFactorizationSub 0 _ _ _ = ...</code>がない場合、2行目の <code>IsFactorizationSub n p l 0 = IsFactorizationSub (Div n p) p l (Mod (Div n p) p)</code>の第一引数は遅延評価されて<code>Div ... (Div (Div n p) p) ... p</code>と積み重なってしまいます。 一行目がある場合、<code>Div n p</code>が<code>0</code>であるかを確かめる必要があるので、<code>n</code>を正格評価します。それに寄ってこのような積み重ねを回避できます。</p>
+<h2 id="modpow">ModPow</h2>
+<p>次に<span class="math inline">\(a^d \mod n\)</span>を計算する型レベル関数<code>ModPow a d n</code>を定義します。</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb5-1" title="1"><span class="kw">type</span> <span class="kw">family</span> <span class="dt">ModPow</span> (<span class="ot">a ::</span> <span class="dt">Nat</span>) (<span class="ot">d ::</span> <span class="dt">Nat</span>) (<span class="ot">n ::</span> <span class="dt">Nat</span>)<span class="ot"> ::</span> <span class="dt">Nat</span> <span class="kw">where</span></a>
+<a class="sourceLine" id="cb5-2" title="2">    <span class="dt">ModPow</span> a <span class="dv">0</span> n <span class="fu">=</span> <span class="dv">1</span></a>
+<a class="sourceLine" id="cb5-3" title="3">    <span class="dt">ModPow</span> a d n <span class="fu">=</span> <span class="dt">ModPowSub</span> a d n (<span class="dt">Mod</span> d <span class="dv">2</span> <span class="fu">==</span> <span class="dv">0</span>)</a>
+<a class="sourceLine" id="cb5-4" title="4"></a>
+<a class="sourceLine" id="cb5-5" title="5"><span class="kw">type</span> <span class="kw">family</span> <span class="dt">ModPowSub</span> a d n b <span class="kw">where</span></a>
+<a class="sourceLine" id="cb5-6" title="6">    <span class="dt">ModPowSub</span> a d n <span class="dt">True</span> <span class="fu">=</span> <span class="dt">Square</span> (<span class="dt">ModPow</span> a (<span class="dt">Div</span> d <span class="dv">2</span>) n) n</a>
+<a class="sourceLine" id="cb5-7" title="7">    <span class="dt">ModPowSub</span> a d n <span class="dt">False</span> <span class="fu">=</span></a>
+<a class="sourceLine" id="cb5-8" title="8">        <span class="dt">Mod</span> (<span class="dt">Square</span> (<span class="dt">ModPow</span> a (<span class="dt">Div</span> d <span class="dv">2</span>) n) n <span class="fu">GHC.TypeLits.*</span> a) n</a>
+<a class="sourceLine" id="cb5-9" title="9"></a>
+<a class="sourceLine" id="cb5-10" title="10"><span class="kw">type</span> <span class="kw">family</span> <span class="dt">Square</span> a n <span class="kw">where</span></a>
+<a class="sourceLine" id="cb5-11" title="11">    <span class="dt">Square</span> <span class="dv">1</span> n <span class="fu">=</span> <span class="dv">1</span></a>
+<a class="sourceLine" id="cb5-12" title="12">    <span class="dt">Square</span> <span class="dv">0</span> n <span class="fu">=</span> <span class="dv">0</span></a>
+<a class="sourceLine" id="cb5-13" title="13">    <span class="dt">Square</span> a n <span class="fu">=</span> <span class="dt">Mod</span> (a <span class="fu">GHC.TypeLits.*</span> a) n</a></code></pre></div>
+<p><code>Square a n</code>は<span class="math inline">\(a \times a \mod n\)</span>を計算します。 ここでも先ほど説明したように、<code>a</code>を正格評価するために<code>a = 1, 0</code>のケースを特別扱いしています。</p>
+<h2 id="位数orderのチェック">位数(order)のチェック</h2>
+<p>最後に<span class="math inline">\(\mathrm{order}_n(a) = n - 1\)</span>を確かめます。</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb6-1" title="1"><span class="kw">type</span> <span class="kw">family</span> <span class="dt">IsPrimeCert</span> (<span class="ot">n ::</span> <span class="dt">Nat</span>) (<span class="ot">l ::</span> [<span class="dt">Nat</span>]) (<span class="ot">a ::</span> <span class="dt">Nat</span>)<span class="ot"> ::</span> <span class="dt">Bool</span></a>
+<a class="sourceLine" id="cb6-2" title="2">    <span class="kw">where</span></a>
+<a class="sourceLine" id="cb6-3" title="3">    <span class="dt">IsPrimeCert</span> n l a <span class="fu">=</span> <span class="dt">ModPow</span> a (n <span class="fu">-</span> <span class="dv">1</span>) n <span class="fu">==</span> <span class="dv">1</span> <span class="fu">&amp;&amp;</span> <span class="dt">IsPrimeCertSub</span> n l a</a>
+<a class="sourceLine" id="cb6-4" title="4"></a>
+<a class="sourceLine" id="cb6-5" title="5"><span class="kw">type</span> <span class="kw">family</span> <span class="dt">IsPrimeCertSub</span> n l a</a>
+<a class="sourceLine" id="cb6-6" title="6">    <span class="kw">where</span></a>
+<a class="sourceLine" id="cb6-7" title="7">    <span class="dt">IsPrimeCertSub</span> n '[] a <span class="fu">=</span> <span class="dt">True</span></a>
+<a class="sourceLine" id="cb6-8" title="8">    <span class="dt">IsPrimeCertSub</span> n (p '<span class="fu">:</span>l) a <span class="fu">=</span> </a>
+<a class="sourceLine" id="cb6-9" title="9">        <span class="dt">Not</span> (<span class="dt">ModPow</span> a (<span class="dt">Div</span> (n <span class="fu">-</span> <span class="dv">1</span>) p) n <span class="fu">==</span> <span class="dv">1</span>) <span class="fu">&amp;&amp;</span> <span class="dt">IsPrimeCertSub</span> n l a</a></code></pre></div>
+<h2 id="素数検証">素数検証</h2>
+<p><code>a</code>, <code>l</code>が<code>n</code>が素数であることの証拠になっていることを表す<code>Constraint</code>を <code>CheckPrimeCert n l a</code>で実装します。</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb7-1" title="1"><span class="kw">type</span> <span class="kw">family</span> <span class="dt">CheckPrimeCert</span> (<span class="ot">n ::</span> <span class="dt">Nat</span>) (<span class="ot">l ::</span> [<span class="dt">Nat</span>]) (<span class="ot">a ::</span> <span class="dt">Nat</span>)<span class="ot"> ::</span> <span class="dt">Constraint</span></a>
+<a class="sourceLine" id="cb7-2" title="2">    <span class="kw">where</span></a>
+<a class="sourceLine" id="cb7-3" title="3">    <span class="dt">CheckPrimeCert</span> n l a <span class="fu">=</span></a>
+<a class="sourceLine" id="cb7-4" title="4">        ((<span class="dt">IsFactorization</span> (n <span class="fu">-</span> <span class="dv">1</span>) l</a>
+<a class="sourceLine" id="cb7-5" title="5">          <span class="fu">||</span> <span class="dt">TypeError</span> (<span class="dt">ShowType</span> l <span class="fu">:&lt;&gt;:</span> <span class="dt">Text</span> <span class="st">&quot; is not the prime factors of &quot;</span><span class="fu">:&lt;&gt;:</span> <span class="dt">ShowType</span> n))</a>
+<a class="sourceLine" id="cb7-6" title="6">        <span class="fu">&amp;&amp;</span></a>
+<a class="sourceLine" id="cb7-7" title="7">        (<span class="dt">IsPrimeCert</span> n l a</a>
+<a class="sourceLine" id="cb7-8" title="8">          <span class="fu">||</span> <span class="dt">TypeError</span> (<span class="dt">ShowType</span> a <span class="fu">:&lt;&gt;:</span> <span class="dt">Text</span> <span class="st">&quot; is not a generator of the multiplicative group modulo &quot;</span> <span class="fu">:&lt;&gt;:</span> <span class="dt">ShowType</span> n))) <span class="fu">~</span> <span class="dt">True</span></a></code></pre></div>
+<p><code>TypeError</code> Constraintを使うことでわかりやすい型エラーメッセージを出力することができます。</p>
+<h2 id="ユーザapi">ユーザAPI</h2>
+<p>最後の、<code>n</code>が素数であることを表す型クラス<code>KnownPrime n</code>とその証拠を保持するGADT <code>PrimeCert n</code>を定義します。</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb8-1" title="1"><span class="kw">class</span> <span class="dt">KnownPrime</span> n <span class="kw">where</span></a>
+<a class="sourceLine" id="cb8-2" title="2"><span class="ot">  primeCert ::</span> <span class="dt">PrimeCert</span> n</a>
+<a class="sourceLine" id="cb8-3" title="3"></a>
+<a class="sourceLine" id="cb8-4" title="4"><span class="kw">data</span> <span class="dt">PrimeCert</span> (<span class="ot">n ::</span> <span class="dt">Nat</span>) <span class="kw">where</span></a>
+<a class="sourceLine" id="cb8-5" title="5">  <span class="dt">PrimeCert</span><span class="ot"> ::</span> <span class="dt">CheckPrimeCert</span> n l a <span class="ot">=&gt;</span> <span class="dt">Proxy</span> l <span class="ot">-&gt;</span> <span class="dt">Proxy</span> a <span class="ot">-&gt;</span> <span class="dt">PrimeCert</span> n</a></code></pre></div>
+<h1 id="使い方">使い方</h1>
+<p><code>n</code>が素数であることを宣言するには<code>KnownPrime n</code>のインスタンスを宣言してあげます。</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb9-1" title="1"><span class="ot">{-# LANGUAGE DataKinds, TypeApplications #-}</span></a>
+<a class="sourceLine" id="cb9-2" title="2"><span class="kw">module</span> <span class="dt">User</span> <span class="kw">where</span></a>
+<a class="sourceLine" id="cb9-3" title="3"><span class="kw">import</span> <span class="dt">Prime</span></a>
+<a class="sourceLine" id="cb9-4" title="4"><span class="kw">import</span> <span class="dt">Data.Proxy</span></a>
+<a class="sourceLine" id="cb9-5" title="5"></a>
+<a class="sourceLine" id="cb9-6" title="6"><span class="kw">instance</span> <span class="dt">KnownPrime</span> <span class="dv">5</span> <span class="kw">where</span></a>
+<a class="sourceLine" id="cb9-7" title="7">    primeCert <span class="fu">=</span> <span class="dt">PrimeCert</span> (<span class="dt">Proxy</span> <span class="fu">@</span>'[<span class="dv">2</span>]) (<span class="dt">Proxy</span> <span class="fu">@</span><span class="dv">2</span>)</a>
+<a class="sourceLine" id="cb9-8" title="8"><span class="kw">instance</span> <span class="dt">KnownPrime</span> <span class="dv">11</span> <span class="kw">where</span></a>
+<a class="sourceLine" id="cb9-9" title="9">    primeCert <span class="fu">=</span> <span class="dt">PrimeCert</span> (<span class="dt">Proxy</span> <span class="fu">@</span>'[<span class="dv">2</span>,<span class="dv">5</span>]) (<span class="dt">Proxy</span> <span class="fu">@</span><span class="dv">2</span>)</a>
+<a class="sourceLine" id="cb9-10" title="10"><span class="kw">instance</span> <span class="dt">KnownPrime</span> <span class="dv">1000000007</span> <span class="kw">where</span></a>
+<a class="sourceLine" id="cb9-11" title="11">    primeCert <span class="fu">=</span> <span class="dt">PrimeCert</span> (<span class="dt">Proxy</span> <span class="fu">@</span>'[<span class="dv">2</span>,<span class="dv">500000003</span>]) (<span class="dt">Proxy</span> <span class="fu">@</span><span class="dv">5</span>)</a>
+<a class="sourceLine" id="cb9-12" title="12"></a>
+<a class="sourceLine" id="cb9-13" title="13"><span class="co">-- TypeErrors</span></a>
+<a class="sourceLine" id="cb9-14" title="14"><span class="kw">instance</span> <span class="dt">KnownPrime</span> <span class="dv">13</span> <span class="kw">where</span></a>
+<a class="sourceLine" id="cb9-15" title="15">    primeCert <span class="fu">=</span> <span class="dt">PrimeCert</span> (<span class="dt">Proxy</span> <span class="fu">@</span>'[<span class="dv">2</span>,<span class="dv">5</span>]) (<span class="dt">Proxy</span> <span class="fu">@</span><span class="dv">2</span>)</a>
+<a class="sourceLine" id="cb9-16" title="16"><span class="kw">instance</span> <span class="dt">KnownPrime</span> <span class="dv">57</span> <span class="kw">where</span></a>
+<a class="sourceLine" id="cb9-17" title="17">    primeCert <span class="fu">=</span> <span class="dt">PrimeCert</span> (<span class="dt">Proxy</span> <span class="fu">@</span>'[<span class="dv">2</span>, <span class="dv">7</span>]) (<span class="dt">Proxy</span> <span class="fu">@</span><span class="dv">2</span>)</a></code></pre></div>
+<p>コンパイルしてみると、正しい証拠を与えた時には型エラーが発生せず、誤った証拠を与えた時は型エラーになることがわかります。 また、<span class="math inline">\(10^9 + 7\)</span>といった多少大きい数に対しても現実的な時間で型検査がすることが確認できます。</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode bash"><code class="sourceCode bash"><a class="sourceLine" id="cb10-1" title="1">$ <span class="ex">ghc</span> User.hs</a>
+<a class="sourceLine" id="cb10-2" title="2"><span class="ex">Loaded</span> package environment from /Users/autotaker/playground/modulo-no-overhead/.ghc.environment.x86_64-darwin-8.6.3</a>
+<a class="sourceLine" id="cb10-3" title="3">[<span class="ex">1</span> of 2] Compiling Prime            ( Prime.hs, Prime.o )</a>
+<a class="sourceLine" id="cb10-4" title="4">[<span class="ex">2</span> of 2] Compiling User             ( User.hs, User.o )</a>
+<a class="sourceLine" id="cb10-5" title="5"></a>
+<a class="sourceLine" id="cb10-6" title="6"><span class="ex">User.hs</span>:16:17: error:</a>
+<a class="sourceLine" id="cb10-7" title="7">    • <span class="st">'[2, 5] is not the prime factors of 13</span></a>
+<a class="sourceLine" id="cb10-8" title="8"><span class="st">    • In the expression: PrimeCert (Proxy @'</span>[<span class="ex">2</span>, 5]) <span class="kw">(</span><span class="ex">Proxy</span> @2<span class="kw">)</span></a>
+<a class="sourceLine" id="cb10-9" title="9">      <span class="ex">In</span> an equation for ‘primeCert’:</a>
+<a class="sourceLine" id="cb10-10" title="10">          <span class="ex">primeCert</span> = PrimeCert (Proxy @<span class="st">'[2, 5]) (Proxy @2)</span></a>
+<a class="sourceLine" id="cb10-11" title="11"><span class="st">      In the instance declaration for ‘KnownPrime 13’</span></a>
+<a class="sourceLine" id="cb10-12" title="12"><span class="st">   |</span></a>
+<a class="sourceLine" id="cb10-13" title="13"><span class="st">16 |     primeCert = PrimeCert (Proxy @'</span>[2,5]) <span class="kw">(</span><span class="ex">Proxy</span> @2<span class="kw">)</span></a>
+<a class="sourceLine" id="cb10-14" title="14">   <span class="kw">|</span>                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^</a>
+<a class="sourceLine" id="cb10-15" title="15"></a>
+<a class="sourceLine" id="cb10-16" title="16"><span class="ex">User.hs</span>:19:17: error:</a>
+<a class="sourceLine" id="cb10-17" title="17">    • <span class="ex">2</span> is not a generator of the multiplicative group modulo 57</a>
+<a class="sourceLine" id="cb10-18" title="18">    • <span class="ex">In</span> the expression: PrimeCert (Proxy @<span class="st">'[2, 7]) (Proxy @2)</span></a>
+<a class="sourceLine" id="cb10-19" title="19"><span class="st">      In an equation for ‘primeCert’:</span></a>
+<a class="sourceLine" id="cb10-20" title="20"><span class="st">          primeCert = PrimeCert (Proxy @'</span>[2, 7]) <span class="kw">(</span><span class="ex">Proxy</span> @2<span class="kw">)</span></a>
+<a class="sourceLine" id="cb10-21" title="21">      <span class="ex">In</span> the instance declaration for ‘KnownPrime 57’</a>
+<a class="sourceLine" id="cb10-22" title="22">   <span class="kw">|</span></a>
+<a class="sourceLine" id="cb10-23" title="23"><span class="ex">19</span> <span class="kw">|</span>     <span class="ex">primeCert</span> = PrimeCert (Proxy @<span class="st">'[2, 7]) (Proxy @2)</span></a>
+<a class="sourceLine" id="cb10-24" title="24"><span class="st">   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^</span></a></code></pre></div>
+<h1 id="limitations">Limitations</h1>
+<h2 id="素因数リストの検証">素因数リストの検証</h2>
+<p>察しの良い読者の方はお気づきかもしれませんが、 今回の話では証拠として与えた素因数リストが本当に素数のリストであることは 検証していません。それさえも検証したい場合は再帰的に<code>KnownPrime p</code>の制約を与えれば良いです。</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><a class="sourceLine" id="cb11-1" title="1"><span class="kw">type</span> <span class="kw">family</span> <span class="dt">KnownPrimes</span><span class="ot"> l ::</span> <span class="dt">Constraint</span> <span class="kw">where</span></a>
+<a class="sourceLine" id="cb11-2" title="2">    <span class="dt">KnownPrimes</span> '[] <span class="fu">=</span> ()</a>
+<a class="sourceLine" id="cb11-3" title="3">    <span class="dt">KnownPrimes</span> (p '<span class="fu">:</span> ps) <span class="fu">=</span> (<span class="dt">KnownPrime</span> p, <span class="dt">KnownPrimes</span> ps)</a>
+<a class="sourceLine" id="cb11-4" title="4"><span class="kw">type</span> <span class="kw">family</span> <span class="dt">CheckPrimeCert</span> n l<span class="ot"> a ::</span> <span class="dt">Constraint</span> <span class="kw">where</span></a>
+<a class="sourceLine" id="cb11-5" title="5">    <span class="dt">CheckPrimeCert</span> n l a <span class="fu">=</span></a>
+<a class="sourceLine" id="cb11-6" title="6">      (<span class="dt">KnownPrimes</span> l</a>
+<a class="sourceLine" id="cb11-7" title="7">      , (<span class="dt">IsFactorization</span> (n <span class="fu">-</span> <span class="dv">1</span>) l </a>
+<a class="sourceLine" id="cb11-8" title="8">        <span class="fu">&amp;&amp;</span> <span class="dt">IsPrimeCert</span> n l a) <span class="fu">~</span> <span class="dt">True</span>)</a></code></pre></div>
+<p>ただこの場合、インスタンス宣言の数が少し多くなるという問題があるので今回は採用しませんでした。</p>
+<h2 id="ボイラーポレートの自動生成">ボイラーポレートの自動生成</h2>
+<p><code>KnownPrime</code>型クラスのインスタンスはTemplate Haskellを使って自動生成できそうです。ただ今回の記事では執筆時間の都合上割愛しました。</p>
+<h1 id="まとめ">まとめ</h1>
+<p>型レベル計算によって素数である時のみコンパイルが通るようなプログラムを実現しました。型レベル計算は遅いので、補助データを用いることで型レベル計算の計算量を抑える必要があります。それらの補助データはユーザが与える、あるいはTemplate Haskellによって導出すれば現実的な時間で動作することが期待できます。 また、型レベル計算の実装時には型レベル自然数が正格に評価されるように注意する必要があります。</p>
+<p>今回作成したプログラムは<a href="https://gist.github.com/autotaker/ad86b99e1e0c9b106787fa687d0127d1">gist</a>においてあります。</p>
+    </section>
+    
+    <div id="disqus_thread"></div>
+    <script>
+    /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+    var disqus_config = function () {
+    this.page.url = "https://autotaker.github.io" + "/posts/2019-03-17-typelevel-prime-check.html";  // Replace PAGE_URL with your page's canonical URL variable
+    this.page.identifier = "/posts/2019-03-17-typelevel-prime-check.html"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+    };
+    (function() { // DON'T EDIT BELOW THIS LINE
+    var d = document, s = d.createElement('script');
+    s.src = 'https://autotaker.disqus.com/embed.js';
+    s.setAttribute('data-timestamp', +new Date());
+    (d.head || d.body).appendChild(s);
+    })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+                            
+</article>
+
+        </main>
+
+        <footer>
+            Site proudly generated by
+            <a href="http://jaspervdj.be/hakyll">Hakyll</a>
+        </footer>
+        </div>
+    </body>
+</html>
